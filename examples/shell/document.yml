@@ -1,0 +1,12 @@
+name: Custom-Shell
+format: SHELL
+description: "Example Shell Document"
+parameters:
+  Message:
+    type: "String"
+    description: "Example parameter"
+    default: "Hello World"
+workingDirectory: /tmp/
+file: ./script.sh
+tags:
+  Type: shell

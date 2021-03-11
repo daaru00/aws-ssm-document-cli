@@ -1,0 +1,17 @@
+name: Custom-PermissionsDocument
+type: Command
+content:
+  schemaVersion: "2.2"
+  description: "Example permissions document"
+  mainSteps:
+    - action: "aws:runShellScript"
+      name: "example"
+      inputs:
+        runCommand:
+          - "echo \"ok\""
+accountIds:
+  - "123456789012"
+  - "123456789013"
+  - "123456789014"
+tags:
+  Type: permissions
