@@ -80,177 +80,17 @@ func New(ses *session.Session, name string) *Document {
 }
 
 // IsDeployed check if document name is present in current AWS account
-func (c *Document) IsDeployed() bool {
-	_, err := c.clients.ssm.GetDocument(&ssm.GetDocumentInput{
-		Name: &c.Name,
+func (d *Document) IsDeployed() bool {
+	_, err := d.clients.ssm.GetDocument(&ssm.GetDocumentInput{
+		Name: &d.Name,
 	})
 	return err == nil
 }
 
-// Deploy document
-func (c *Document) Deploy() error {
-
-	// Get content
-	format, content, err := c.GetContent()
-	if err != nil {
-		return err
-	}
-
-	// Check if Document is already deployed
-	if c.IsDeployed() == false {
-		input := &ssm.CreateDocumentInput{
-			Name:           &c.Name,
-			DocumentFormat: format,
-			DocumentType:   &c.Type,
-			Content:        content,
-		}
-
-		// Parse tag
-		for key, value := range c.Tags {
-			input.Tags = append(input.Tags, &ssm.Tag{
-				Key:   aws.String(key),
-				Value: aws.String(value),
-			})
-		}
-
-		// Create document
-		_, err = c.clients.ssm.CreateDocument(input)
-	} else {
-		input := &ssm.UpdateDocumentInput{
-			Name:            &c.Name,
-			DocumentFormat:  format,
-			Content:         content,
-			DocumentVersion: aws.String("$LATEST"),
-		}
-
-		// Update document
-		_, err = c.clients.ssm.UpdateDocument(input)
-	}
-
-	// Check for deploy error
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() != ssm.ErrCodeDuplicateDocumentContent {
-				return err
-			}
-		}
-	}
-
-	// Retrieve current document permissions
-	permRes, err := c.clients.ssm.DescribeDocumentPermission(&ssm.DescribeDocumentPermissionInput{
-		Name:           &c.Name,
-		PermissionType: aws.String("Share"),
-	})
-	if err != nil {
-		return err
-	}
-
-	// Skip permissions
-	if len(c.AccountIDs) == 0 && len(permRes.AccountIds) == 0 {
-		return nil
-	}
-
-	// Add all permissions
-	if len(c.AccountIDs) > 0 && len(permRes.AccountIds) == 0 {
-		_, err := c.clients.ssm.ModifyDocumentPermission(&ssm.ModifyDocumentPermissionInput{
-			Name:            &c.Name,
-			PermissionType:  aws.String("Share"),
-			AccountIdsToAdd: aws.StringSlice(c.AccountIDs),
-		})
-		return err
-	}
-
-	// Remove all permissions
-	if len(c.AccountIDs) == 0 && len(permRes.AccountIds) > 0 {
-		_, err := c.clients.ssm.ModifyDocumentPermission(&ssm.ModifyDocumentPermissionInput{
-			Name:               &c.Name,
-			PermissionType:     aws.String("Share"),
-			AccountIdsToRemove: permRes.AccountIds,
-		})
-		return err
-	}
-
-	// Check accounts ids to add
-	accountToAdd := []string{}
-	for _, accountID := range c.AccountIDs {
-		var foundAccount string
-		for _, currentAccountID := range permRes.AccountIds {
-			if accountID == *currentAccountID {
-				foundAccount = accountID
-				break
-			}
-		}
-
-		if len(foundAccount) == 0 {
-			accountToAdd = append(accountToAdd, accountID)
-		}
-	}
-
-	// Check accounts ids to remove
-	accountToRemove := []string{}
-	for _, currentAccountID := range permRes.AccountIds {
-		var foundAccount string
-		for _, accountID := range c.AccountIDs {
-			if accountID == *currentAccountID {
-				foundAccount = accountID
-				break
-			}
-		}
-
-		if len(foundAccount) == 0 {
-			accountToRemove = append(accountToRemove, *currentAccountID)
-		}
-	}
-
-	// Update permissions if needed
-	if len(accountToAdd) > 0 || len(accountToRemove) > 0 {
-		_, err = c.clients.ssm.ModifyDocumentPermission(&ssm.ModifyDocumentPermissionInput{
-			Name:               &c.Name,
-			PermissionType:     aws.String("Share"),
-			AccountIdsToAdd:    aws.StringSlice(accountToAdd),
-			AccountIdsToRemove: aws.StringSlice(accountToRemove),
-		})
-		return err
-	}
-
-	return nil
-}
-
-// Remove document
-func (c *Document) Remove() error {
-	// Retrieve current document permissions
-	permRes, err := c.clients.ssm.DescribeDocumentPermission(&ssm.DescribeDocumentPermissionInput{
-		Name:           &c.Name,
-		PermissionType: aws.String("Share"),
-	})
-	if err != nil {
-		return err
-	}
-
-	// Remove all permissions
-	if len(permRes.AccountIds) > 0 {
-		c.clients.ssm.ModifyDocumentPermission(&ssm.ModifyDocumentPermissionInput{
-			Name:               &c.Name,
-			AccountIdsToRemove: permRes.AccountIds,
-		})
-		return nil
-	}
-
-	// Delete document
-	_, err = c.clients.ssm.DeleteDocument(&ssm.DeleteDocumentInput{
-		Name: &c.Name,
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // GetShellContent return document content for shell document
-func (c *Document) GetShellContent() (string, error) {
+func (d *Document) GetShellContent() (string, error) {
 	// Load script content
-	fileContent, err := ioutil.ReadFile(c.File)
+	fileContent, err := ioutil.ReadFile(d.File)
 	if err != nil {
 		return "", err
 	}
@@ -268,14 +108,14 @@ func (c *Document) GetShellContent() (string, error) {
 	// Build content
 	content := Content{
 		SchemaVersion: "2.2",
-		Description:   c.Description,
-		Parameters:    c.Parameters,
+		Description:   d.Description,
+		Parameters:    d.Parameters,
 		MainSteps: []MainStep{
 			{
 				Action: "aws:runShellScript",
 				Name:   "RunShellScript",
 				Inputs: ShellInput{
-					WorkingDirectory: c.WorkingDirectory,
+					WorkingDirectory: d.WorkingDirectory,
 					RunCommand:       strings.Split(string(fileContent), EOL),
 				},
 			},
@@ -292,12 +132,12 @@ func (c *Document) GetShellContent() (string, error) {
 }
 
 // GetContent return the SSM content
-func (c *Document) GetContent() (*string, *string, error) {
+func (d *Document) GetContent() (*string, *string, error) {
 
 	// Check for shell command
-	if c.Format == "SHELL" {
+	if d.Format == "SHELL" {
 		format := "JSON"
-		content, err := c.GetShellContent()
+		content, err := d.GetShellContent()
 		if err != nil {
 			return &format, nil, err
 		}
@@ -305,9 +145,9 @@ func (c *Document) GetContent() (*string, *string, error) {
 	}
 
 	// Check for provided content
-	if len(c.Content.SchemaVersion) > 0 {
+	if len(d.Content.SchemaVersion) > 0 {
 		format := "JSON"
-		marshal, err := jsoniter.Marshal(c.Content)
+		marshal, err := jsoniter.Marshal(d.Content)
 		if err != nil {
 			return &format, nil, err
 		}
@@ -317,12 +157,11 @@ func (c *Document) GetContent() (*string, *string, error) {
 	}
 
 	// Check for provided file
-	if len(c.File) > 0 {
-		fmt.Println("3")
+	if len(d.File) > 0 {
 		var format string
 
 		// Check extension
-		fileExtension := filepath.Ext(c.File)
+		fileExtension := filepath.Ext(d.File)
 		switch strings.ToUpper(fileExtension) {
 		case ".TXT":
 			format = "TEXT"
@@ -335,17 +174,17 @@ func (c *Document) GetContent() (*string, *string, error) {
 			format = "JSON"
 		case ".SH":
 			format := "JSON"
-			content, err := c.GetShellContent()
+			content, err := d.GetShellContent()
 			if err != nil {
 				return &format, nil, err
 			}
 			return &format, &content, nil
 		default:
-			return nil, nil, fmt.Errorf("Provided file %s has an unsupported extension", c.File)
+			return nil, nil, fmt.Errorf("Provided file %s has an unsupported extension", d.File)
 		}
 
 		// Load file content
-		fileContent, err := ioutil.ReadFile(c.File)
+		fileContent, err := ioutil.ReadFile(d.File)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -356,4 +195,273 @@ func (c *Document) GetContent() (*string, *string, error) {
 	}
 
 	return nil, nil, errors.New("Cannot generate SSM document")
+}
+
+// GetExplodedAccountIDs return account ids with comma separated values exploded
+func (d *Document) GetExplodedAccountIDs() []string {
+	accountIDs := []string{}
+
+	// Loop over configured account ids
+	for _, accountID := range d.AccountIDs {
+		// Check if contains a comman
+		if strings.Contains(accountID, ",") {
+			// Explode string, trim parts and add to ids slice
+			accountIDsSplit := strings.Split(accountID, ",")
+			for _, accountIDSplit := range accountIDsSplit {
+				trimStr := strings.Trim(accountIDSplit, " ")
+				if len(trimStr) > 0 {
+					accountIDs = append(accountIDs, trimStr)
+				}
+			}
+		} else {
+			// Add single account
+			trimStr := strings.Trim(accountID, " ")
+			if len(trimStr) > 0 {
+				accountIDs = append(accountIDs, trimStr)
+			}
+		}
+	}
+
+	// Remove duplication
+	keys := make(map[string]bool)
+	uniqueAccountIDs := []string{}
+	for _, entry := range accountIDs {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			uniqueAccountIDs = append(uniqueAccountIDs, entry)
+		}
+	}
+
+	// Return unique account ids slice
+	return uniqueAccountIDs
+}
+
+// Deploy document
+func (d *Document) Deploy() error {
+
+	// Get content
+	format, content, err := d.GetContent()
+	if err != nil {
+		return err
+	}
+
+	// Check if Document is already deployed
+	if d.IsDeployed() == false {
+		input := &ssm.CreateDocumentInput{
+			Name:           &d.Name,
+			DocumentFormat: format,
+			DocumentType:   &d.Type,
+			Content:        content,
+		}
+
+		// Parse tag
+		for key, value := range d.Tags {
+			input.Tags = append(input.Tags, &ssm.Tag{
+				Key:   aws.String(key),
+				Value: aws.String(value),
+			})
+		}
+
+		// Create document
+		_, err = d.clients.ssm.CreateDocument(input)
+	} else {
+		input := &ssm.UpdateDocumentInput{
+			Name:            &d.Name,
+			DocumentFormat:  format,
+			Content:         content,
+			DocumentVersion: aws.String("$LATEST"),
+		}
+
+		// Update document
+		_, err = d.clients.ssm.UpdateDocument(input)
+	}
+
+	// Check for deploy error
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() != ssm.ErrCodeDuplicateDocumentContent {
+				return err
+			}
+		}
+	}
+
+	// Retrieve current document permissions
+	permRes, err := d.clients.ssm.DescribeDocumentPermission(&ssm.DescribeDocumentPermissionInput{
+		Name:           &d.Name,
+		PermissionType: aws.String("Share"),
+	})
+	if err != nil {
+		return err
+	}
+
+	// Skip permissions if not set
+	accountIDs := d.GetExplodedAccountIDs()
+	if len(accountIDs) == 0 && len(permRes.AccountIds) == 0 {
+		return nil
+	}
+
+	// Check accounts ids to add
+	accountsToAdd := []string{}
+	for _, accountID := range accountIDs {
+		var foundAccount string
+		for _, currentAccountID := range permRes.AccountIds {
+			if accountID == *currentAccountID {
+				foundAccount = accountID
+				break
+			}
+		}
+
+		if len(foundAccount) == 0 {
+			accountsToAdd = append(accountsToAdd, accountID)
+		}
+	}
+
+	// Check accounts ids to remove
+	accountsToRemove := []string{}
+	for _, currentAccountID := range permRes.AccountIds {
+		var foundAccount string
+		for _, accountID := range accountIDs {
+			if accountID == *currentAccountID {
+				foundAccount = accountID
+				break
+			}
+		}
+
+		if len(foundAccount) == 0 {
+			accountsToRemove = append(accountsToRemove, *currentAccountID)
+		}
+	}
+
+	// Update permissions if needed
+	if len(accountsToAdd) > 0 || len(accountsToRemove) > 0 {
+		// Build update input
+		updateInput := &ssm.ModifyDocumentPermissionInput{
+			Name:           &d.Name,
+			PermissionType: aws.String("Share"),
+		}
+		if len(accountsToAdd) > 0 {
+			updateInput.AccountIdsToAdd = aws.StringSlice(accountsToAdd)
+		}
+		if len(accountsToRemove) > 0 {
+			updateInput.AccountIdsToRemove = aws.StringSlice(accountsToRemove)
+		}
+
+		// Execute update
+		_, err = d.clients.ssm.ModifyDocumentPermission(updateInput)
+		return err
+	}
+
+	return nil
+}
+
+// UpdateTags update canary tags
+func (d *Document) UpdateTags() error {
+	// Get current tags
+	resTags, err := d.clients.ssm.ListTagsForResource(&ssm.ListTagsForResourceInput{
+		ResourceId:   &d.Name,
+		ResourceType: aws.String("Document"),
+	})
+	if err != nil {
+		return err
+	}
+
+	// Parse document tags
+	tags := []*ssm.Tag{}
+	for key, value := range d.Tags {
+		tags = append(tags, &ssm.Tag{
+			Key:   aws.String(key),
+			Value: aws.String(value),
+		})
+	}
+
+	// Skip if not tags are set
+	if len(tags) == 0 && len(resTags.TagList) == 0 {
+		return nil
+	}
+
+	// Check tags to add
+	tagsToAdd := []*ssm.Tag{}
+	for _, tag := range tags {
+		var foundTag *ssm.Tag
+		for _, currentTag := range resTags.TagList {
+			if *tag.Key == *currentTag.Key && *tag.Value == *currentTag.Value {
+				foundTag = tag
+				break
+			}
+		}
+
+		if foundTag == nil {
+			tagsToAdd = append(tagsToAdd, tag)
+		}
+	}
+
+	// Add missing tags
+	if len(tagsToAdd) > 0 {
+		_, err = d.clients.ssm.AddTagsToResource(&ssm.AddTagsToResourceInput{
+			ResourceId:   &d.Name,
+			ResourceType: aws.String("Document"),
+			Tags:         tagsToAdd,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Check accounts ids to remove
+	tagsKeysToRemove := []*string{}
+	for _, currentTag := range resTags.TagList {
+		var foundTagKey *string
+		for _, tag := range tags {
+			if *tag.Key == *currentTag.Key {
+				foundTagKey = tag.Key
+				break
+			}
+		}
+
+		if foundTagKey == nil {
+			tagsKeysToRemove = append(tagsKeysToRemove, currentTag.Key)
+		}
+	}
+
+	// Remove unused tags
+	if len(tagsKeysToRemove) > 0 {
+		_, err = d.clients.ssm.RemoveTagsFromResource(&ssm.RemoveTagsFromResourceInput{
+			ResourceId:   &d.Name,
+			ResourceType: aws.String("Document"),
+			TagKeys:      tagsKeysToRemove,
+		})
+	}
+
+	return err
+}
+
+// Remove document
+func (d *Document) Remove() error {
+	// Retrieve current document permissions
+	permRes, err := d.clients.ssm.DescribeDocumentPermission(&ssm.DescribeDocumentPermissionInput{
+		Name:           &d.Name,
+		PermissionType: aws.String("Share"),
+	})
+	if err != nil {
+		return err
+	}
+
+	// Remove all permissions
+	if len(permRes.AccountIds) > 0 {
+		d.clients.ssm.ModifyDocumentPermission(&ssm.ModifyDocumentPermissionInput{
+			Name:               &d.Name,
+			AccountIdsToRemove: permRes.AccountIds,
+		})
+		return nil
+	}
+
+	// Delete document
+	_, err = d.clients.ssm.DeleteDocument(&ssm.DeleteDocumentInput{
+		Name: &d.Name,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

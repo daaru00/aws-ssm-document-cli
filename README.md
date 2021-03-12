@@ -73,7 +73,7 @@ This CLI will search for `document.yml` configurations files, recursively, in se
 name: MyDocument
 description: My document description
 accountIds: 
-  - 123456789
+  - "123456789012"
 file: ./script.sh
 parameters:
   ParameterName:
@@ -98,6 +98,41 @@ file: ./script.sh
 tags:
   Project: "${APP_NAME}"
   Environment: "${ENV}"
+```
+
+### Account IDs explode values
+
+If Account ID contains a comma the string will be exploded in simple string array. This is useful for account IDs reused with interpolation.
+
+Fo example having environment variables (or .env file) set like this:
+```bash
+export ACCOUNT_IDS="123456789012,123456789013,123456789014"
+```
+and configuring document configuration like this:
+```yaml
+name: MyDocument
+file: ./script.sh
+accountIds: 
+  - "${ACCOUNT_IDS}"
+  - "123456789015"
+```
+the deploy command will interpolate environment variables in:
+```yaml
+name: MyDocument
+file: ./script.sh
+accountIds: 
+  - "123456789012,123456789013,123456789014"
+  - "123456789015"
+```
+and exploded in a string array:
+```yaml
+name: MyDocument
+file: ./script.sh
+accountIds: 
+  - "123456789012"
+  - "123456789013"
+  - "123456789014"
+  - "123456789015"
 ```
 
 ### Search path

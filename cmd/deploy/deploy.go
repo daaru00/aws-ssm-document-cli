@@ -129,11 +129,26 @@ func Action(c *cli.Context) error {
 func deploySingleDocument(ses *session.Session, region *string, accountID *string, document *document.Document) error {
 	var err error
 
+	isAlreadyDeployed := document.IsDeployed()
+
 	// Deploy document
-	fmt.Println(fmt.Sprintf("[%s] Deploying..", document.Name))
+	if !isAlreadyDeployed {
+		fmt.Println(fmt.Sprintf("[%s] Creating..", document.Name))
+	} else {
+		fmt.Println(fmt.Sprintf("[%s] Updating..", document.Name))
+	}
 	err = document.Deploy()
 	if err != nil {
 		return err
+	}
+
+	// Update tags
+	if isAlreadyDeployed {
+		fmt.Println(fmt.Sprintf("[%s] Updating tags..", document.Name))
+		err = document.UpdateTags()
+		if err != nil {
+			return err
+		}
 	}
 
 	fmt.Println(fmt.Sprintf("[%s] Deploy completed!", document.Name))
