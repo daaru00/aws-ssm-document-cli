@@ -263,7 +263,10 @@ func (d *Document) Deploy() error {
 		}
 
 		// Create document
-		_, err = d.clients.ssm.CreateDocument(input)
+		_, err := d.clients.ssm.CreateDocument(input)
+		if err != nil {
+			return err
+		}
 	} else {
 		input := &ssm.UpdateDocumentInput{
 			Name:            &d.Name,
@@ -273,7 +276,23 @@ func (d *Document) Deploy() error {
 		}
 
 		// Update document
-		_, err = d.clients.ssm.UpdateDocument(input)
+		res, err := d.clients.ssm.UpdateDocument(input)
+		if err != nil {
+			if awsErr, ok := err.(awserr.Error); ok {
+				if awsErr.Code() != ssm.ErrCodeDuplicateDocumentContent {
+					return err
+				}
+			}
+		} else {
+			// Update latest document version
+			_, err = d.clients.ssm.UpdateDocumentDefaultVersion(&ssm.UpdateDocumentDefaultVersionInput{
+				Name:            &d.Name,
+				DocumentVersion: res.DocumentDescription.DocumentVersion,
+			})
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	// Check for deploy error
