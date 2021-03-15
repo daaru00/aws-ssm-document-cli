@@ -19,7 +19,7 @@ func NewCommand(globalFlags []cli.Flag) *cli.Command {
 	return &cli.Command{
 		Name:    "remove",
 		Aliases: []string{"delete", "down"},
-		Usage:   "Remove a Synthetics Document",
+		Usage:   "Remove SSM Documents",
 		Flags: append(globalFlags, []cli.Flag{
 			&cli.StringFlag{
 				Name:    "artifact-bucket",
@@ -126,7 +126,7 @@ func Action(c *cli.Context) error {
 		waitGroup.Wait()
 
 		// Do dummy wait
-		time.Sleep(2000 * time.Microsecond)
+		time.Sleep(2 * time.Second)
 	}
 
 	// Close errors channel
