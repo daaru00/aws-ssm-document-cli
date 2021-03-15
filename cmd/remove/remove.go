@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -86,31 +87,47 @@ func Action(c *cli.Context) error {
 		return err
 	}
 
-	// Setup wait group for async jobs
-	var waitGroup sync.WaitGroup
-
-	// Setup deploy chan error
+	// Setup errors channel
 	errs := make(chan error, len(*documents))
 
-	// Loop over found documents
-	for _, cy := range *documents {
+	// Setup max parallels
+	allDocuments := *documents
+	parallel := 10
 
-		// Execute parallel deploy
-		waitGroup.Add(1)
-		go func(document *document.Document) {
-			defer waitGroup.Done()
-			var err error
+	// Start parallel deploy
+	for start := 0; start < len(allDocuments); start += parallel {
+		// Update chunk start and end
+		end := start + parallel
+		if end > len(allDocuments) {
+			end = len(allDocuments)
+		}
 
-			if err == nil {
-				err = removeSingleDocument(ses, document, region)
-			}
+		// Split array chunk
+		chunk := allDocuments[start:end]
 
-			errs <- err
-		}(cy)
+		// Setup wait group for async jobs
+		var waitGroup sync.WaitGroup
+
+		// Loop over found document
+		for _, cy := range chunk {
+
+			// Execute parallel deploy
+			waitGroup.Add(1)
+			go func(document *document.Document) {
+				defer waitGroup.Done()
+
+				err := removeSingleDocument(ses, document, region)
+
+				errs <- err
+			}(cy)
+		}
+
+		// Wait until all remove ends
+		waitGroup.Wait()
+
+		// Do dummy wait
+		time.Sleep(2000 * time.Microsecond)
 	}
-
-	// Wait until all remove ends
-	waitGroup.Wait()
 
 	// Close errors channel
 	close(errs)
