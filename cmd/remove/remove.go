@@ -49,6 +49,11 @@ func NewCommand(globalFlags []cli.Flag) *cli.Command {
 				Aliases: []string{"a"},
 				Usage:   "Select all documents",
 			},
+			&cli.IntFlag{
+				Name:  "parallels",
+				Usage: "Set max remove executed in parallel",
+				Value: 5,
+			},
 		}...),
 		Action:    Action,
 		ArgsUsage: "[path...]",
@@ -92,12 +97,12 @@ func Action(c *cli.Context) error {
 
 	// Setup max parallels
 	allDocuments := *documents
-	parallel := 10
+	parallels := c.Int("parallels")
 
 	// Start parallel deploy
-	for start := 0; start < len(allDocuments); start += parallel {
+	for start := 0; start < len(allDocuments); start += parallels {
 		// Update chunk start and end
-		end := start + parallel
+		end := start + parallels
 		if end > len(allDocuments) {
 			end = len(allDocuments)
 		}
