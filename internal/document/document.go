@@ -23,6 +23,7 @@ type clients struct {
 type ShellInput struct {
 	WorkingDirectory string   `yaml:"workingDirectory" json:"workingDirectory"`
 	RunCommand       []string `yaml:"runCommand" json:"runCommand"`
+	TimeoutSeconds   string   `yaml:"timeoutSeconds" json:"timeoutSeconds"`
 }
 
 // MainStep content for document
@@ -60,6 +61,7 @@ type Document struct {
 	Content          Content              `yaml:"content,omitempty" json:"content,omitempty"`
 	Parameters       map[string]Parameter `yaml:"parameters,omitempty" json:"parameters,omitempty"`
 	WorkingDirectory string               `yaml:"workingDirectory" json:"workingDirectory"`
+	TimeoutSeconds   string               `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
 	Format           string               `yaml:"format" json:"format"`
 	File             string               `yaml:"file" json:"file"`
 }
@@ -117,6 +119,7 @@ func (d *Document) GetShellContent() (string, error) {
 				Inputs: ShellInput{
 					WorkingDirectory: d.WorkingDirectory,
 					RunCommand:       strings.Split(string(fileContent), EOL),
+					TimeoutSeconds:   d.TimeoutSeconds,
 				},
 			},
 		},
