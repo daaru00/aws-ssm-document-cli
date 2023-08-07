@@ -356,21 +356,54 @@ func (d *Document) Deploy() error {
 
 	// Update permissions if needed
 	if len(accountsToAdd) > 0 || len(accountsToRemove) > 0 {
-		// Build update input
-		updateInput := &ssm.ModifyDocumentPermissionInput{
-			Name:           &d.Name,
-			PermissionType: aws.String("Share"),
-		}
+
+		chunkSize := 20
+
+		// Elaborate account ids to add
 		if len(accountsToAdd) > 0 {
-			updateInput.AccountIdsToAdd = aws.StringSlice(accountsToAdd)
-		}
-		if len(accountsToRemove) > 0 {
-			updateInput.AccountIdsToRemove = aws.StringSlice(accountsToRemove)
+			for i := 0; i < len(accountsToAdd); i += chunkSize {
+				end := i + chunkSize
+				if end > len(accountsToAdd) {
+					end = len(accountsToAdd)
+				}
+
+				// Build update input
+				updateInput := &ssm.ModifyDocumentPermissionInput{
+					Name:            &d.Name,
+					PermissionType:  aws.String("Share"),
+					AccountIdsToAdd: aws.StringSlice(accountsToAdd[i:end]),
+				}
+
+				// Execute update
+				_, err = d.clients.ssm.ModifyDocumentPermission(updateInput)
+				if err != nil {
+					return err
+				}
+			}
 		}
 
-		// Execute update
-		_, err = d.clients.ssm.ModifyDocumentPermission(updateInput)
-		return err
+		// Elaborate account ids to remove
+		if len(accountsToRemove) > 0 {
+			for i := 0; i < len(accountsToRemove); i += chunkSize {
+				end := i + chunkSize
+				if end > len(accountsToRemove) {
+					end = len(accountsToRemove)
+				}
+
+				// Build update input
+				updateInput := &ssm.ModifyDocumentPermissionInput{
+					Name:               &d.Name,
+					PermissionType:     aws.String("Share"),
+					AccountIdsToRemove: aws.StringSlice(accountsToRemove[i:end]),
+				}
+
+				// Execute update
+				_, err = d.clients.ssm.ModifyDocumentPermission(updateInput)
+				if err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	return nil
