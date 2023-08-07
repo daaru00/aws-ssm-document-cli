@@ -16,11 +16,6 @@ builds:
 archives:
 - builds:
   - aws-ssm-document
-  replacements:
-    darwin: Darwin
-    linux: Linux
-    windows: Windows
-    amd64: x86_64
   format: tar.gz
   format_overrides:
     - goos: windows
